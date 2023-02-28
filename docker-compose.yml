@@ -1,0 +1,82 @@
+version: "3.8"
+
+services:
+  web:
+    build: ./web
+    volumes:
+      - ./web:/usr/src/app/
+    env_file:
+      - ./web/.env
+    # entrypoint: /entrypoint.sh
+    ports:
+      - 5000:5000
+    networks:
+      - store_Monitoring
+    entrypoint: "sh ./entrypoint.sh"
+    depends_on:
+      - redis
+      - db
+
+
+  db:
+    image: postgres:14-bullseye
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=store_Monitoring
+      - POSTGRES_PASSWORD=store_Monitoring
+      - POSTGRES_db=store_Monitoring
+    networks:
+      - store_Monitoring
+  
+  redis:
+    image: redis:6-alpine
+    networks:
+      - store_Monitoring
+  
+  worker:
+    build: ./web
+    command: celery --app store_Monitoring.tasks.celery worker --loglevel=info --logfile=logs/celery.log
+    volumes:
+      - ./web:/usr/src/app/
+    env_file:
+      - ./web/.env
+    environment:
+      - FLASK_DEBUG=1
+      - APP_SETTINGS=store_Monitoring.config.DevelopmentConfig
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - web
+      - redis
+    networks:
+      - store_Monitoring
+
+  dashboard:
+    build: ./web
+    command: celery --app store_Monitoring.tasks.celery flower --port=5555 --broker=redis://redis:6379/0
+    volumes:
+      - ./web:/usr/src/app/
+    env_file:
+      - ./web/.env
+    ports:
+      - 5556:5555
+    environment:
+      - FLASK_DEBUG=1
+      - APP_SETTINGS=cstore_Monitoring.onfig.DevelopmentConfig
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - store_Monitoring
+    depends_on:
+      - web
+      - redis
+      - worker
+
+volumes:
+  postgres_data:
+
+networks:
+  store_Monitoring:
+    name: store_Monitoring
+    driver: bridge
